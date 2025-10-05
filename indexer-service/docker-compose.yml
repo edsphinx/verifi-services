@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  indexer:
+    build: .
+    container_name: verifi-indexer
+    ports:
+      - "3002:3002"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - NEXT_PUBLIC_APTOS_NETWORK=${NEXT_PUBLIC_APTOS_NETWORK}
+      - NEXT_PUBLIC_PUBLISHER_ACCOUNT_ADDRESS=${NEXT_PUBLIC_PUBLISHER_ACCOUNT_ADDRESS}
+      - INDEXER_PORT=3002
+    restart: unless-stopped
+    networks:
+      - verifi-network
+
+networks:
+  verifi-network:
+    driver: bridge

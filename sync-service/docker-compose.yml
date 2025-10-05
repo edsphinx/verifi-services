@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  sync-service:
+    build: .
+    container_name: verifi-sync-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - PORT=3001
+      - ENVIRONMENT=production
+    env_file:
+      - .env
+    networks:
+      - verifi-network
+
+networks:
+  verifi-network:
+    driver: bridge
