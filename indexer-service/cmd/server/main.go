@@ -69,7 +69,7 @@ func main() {
 	}
 
 	// Initialize event listener
-	listener := indexer.NewEventListener(aptosClient, database, cfg.ModuleAddress)
+	listener := indexer.NewEventListener(aptosClient, database, cfg.ModuleAddress, cfg.WebhookURL)
 
 	// Setup Fiber app
 	app := fiber.New(fiber.Config{

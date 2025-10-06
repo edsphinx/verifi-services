@@ -11,6 +11,7 @@ type Config struct {
 	AptosNetwork   string
 	ModuleAddress  string
 	Port           string
+	WebhookURL     string
 	AptosAPIKeys   []string
 	NoditAPIKeys   []string
 }
@@ -36,6 +37,9 @@ func Load() (*Config, error) {
 		port = "3002"
 	}
 
+	// Load webhook URL (optional)
+	webhookURL := os.Getenv("WEBHOOK_URL")
+
 	// Load API keys (comma-separated)
 	aptosKeys := []string{}
 	if aptosKeysStr := os.Getenv("APTOS_API_KEYS"); aptosKeysStr != "" {
@@ -60,6 +64,7 @@ func Load() (*Config, error) {
 		AptosNetwork:  network,
 		ModuleAddress: moduleAddr,
 		Port:          port,
+		WebhookURL:    webhookURL,
 		AptosAPIKeys:  aptosKeys,
 		NoditAPIKeys:  noditKeys,
 	}, nil
