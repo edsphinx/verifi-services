@@ -8,8 +8,6 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	"github.com/rs/zerolog/log"
 )
 
 const (
