@@ -18,6 +18,7 @@ import (
 	"github.com/verifi-protocol/indexer-service/internal/config"
 	"github.com/verifi-protocol/indexer-service/internal/db"
 	"github.com/verifi-protocol/indexer-service/internal/indexer"
+	"github.com/verifi-protocol/indexer-service/internal/logbuffer"
 )
 
 func main() {
@@ -30,7 +31,17 @@ func main() {
 
 	// Setup logger
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	// Initialize log buffer for HTTP endpoint
+	logbuffer.Init(500) // Keep last 500 log entries
+
+	// Create multi-writer: console + log buffer
+	consoleWriter := zerolog.ConsoleWriter{Out: os.Stderr}
+	multiWriter := zerolog.MultiLevelWriter(
+		consoleWriter,
+		&logBufferWriter{},
+	)
+	log.Logger = log.Output(multiWriter)
 
 	log.Info().Msg("🎧 VeriFi Event Indexer Starting...")
 
@@ -105,6 +116,21 @@ func main() {
 		})
 	})
 
+	// Logs endpoint - returns recent logs
+	app.Get("/logs", func(c *fiber.Ctx) error {
+		// Get limit from query param, default 100
+		limit := c.QueryInt("limit", 100)
+		if limit > 500 {
+			limit = 500
+		}
+
+		logs := logbuffer.GetRecent(limit)
+		return c.JSON(fiber.Map{
+			"logs":  logs,
+			"count": len(logs),
+		})
+	})
+
 	// Start server in goroutine
 	go func() {
 		log.Info().Msgf("🌐 Server listening on :%s", cfg.Port)
@@ -160,4 +186,17 @@ func runMigrations(database *db.DB) error {
 
 	log.Info().Msg("✅ Migrations complete")
 	return nil
+}
+
+// Custom writer to capture logs into buffer
+type logBufferWriter struct{}
+
+func (w *logBufferWriter) Write(p []byte) (n int, err error) {
+	logbuffer.Add("INFO", string(p))
+	return len(p), nil
+}
+
+func (w *logBufferWriter) WriteLevel(level zerolog.Level, p []byte) (n int, err error) {
+	logbuffer.Add(level.String(), string(p))
+	return len(p), nil
 }

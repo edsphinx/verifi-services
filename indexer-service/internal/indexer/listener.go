@@ -96,16 +96,34 @@ func (l *EventListener) Start(ctx context.Context) error {
 }
 
 func (l *EventListener) poll(ctx context.Context) error {
+	log.Debug().
+		Uint64("current_version", l.lastVersion).
+		Msg("🔄 Starting poll cycle")
+
 	// Get latest version
 	latestVersion, err := l.client.GetLatestLedgerInfo(ctx)
 	if err != nil {
+		log.Error().Err(err).Msg("❌ Failed to get latest ledger info")
 		return err
 	}
 
+	log.Debug().
+		Uint64("latest_version", latestVersion).
+		Uint64("last_processed", l.lastVersion).
+		Uint64("diff", latestVersion-l.lastVersion).
+		Msg("📊 Ledger info retrieved")
+
 	// No new transactions
 	if latestVersion <= l.lastVersion {
+		log.Debug().Msg("⏸️  No new transactions to process")
 		return nil
 	}
+
+	log.Info().
+		Uint64("from", l.lastVersion+1).
+		Uint64("to", latestVersion).
+		Uint64("count", latestVersion-l.lastVersion).
+		Msg("📥 Processing new transactions")
 
 	// Fetch transactions in batches
 	batchSize := uint64(100)
@@ -118,10 +136,24 @@ func (l *EventListener) poll(ctx context.Context) error {
 			limit = end - start + 1
 		}
 
+		log.Debug().
+			Uint64("start", start).
+			Uint64("limit", limit).
+			Msg("🔍 Fetching transaction batch")
+
 		txs, err := l.client.GetTransactionsByVersionRange(ctx, start, limit)
 		if err != nil {
+			log.Error().
+				Err(err).
+				Uint64("start", start).
+				Uint64("limit", limit).
+				Msg("❌ Failed to fetch transactions")
 			return err
 		}
+
+		log.Debug().
+			Int("tx_count", len(txs)).
+			Msg("✅ Transactions fetched")
 
 		// Process each transaction
 		for _, tx := range txs {
@@ -130,7 +162,7 @@ func (l *EventListener) poll(ctx context.Context) error {
 					Err(err).
 					Str("version", tx.Version).
 					Str("hash", tx.Hash).
-					Msg("Failed to process transaction")
+					Msg("❌ Failed to process transaction")
 				continue
 			}
 		}
@@ -140,8 +172,12 @@ func (l *EventListener) poll(ctx context.Context) error {
 
 	// Update last version
 	l.lastVersion = latestVersion
+	log.Info().
+		Uint64("new_version", latestVersion).
+		Msg("💾 Updating last processed version")
+
 	if err := l.saveLastVersion(ctx); err != nil {
-		log.Error().Err(err).Msg("Failed to save last version")
+		log.Error().Err(err).Msg("❌ Failed to save last version")
 	}
 
 	return nil
@@ -150,29 +186,63 @@ func (l *EventListener) poll(ctx context.Context) error {
 func (l *EventListener) processTx(ctx context.Context, tx TransactionEvent) error {
 	// Only process successful user transactions
 	if !tx.Success || tx.Type != "user_transaction" {
+		log.Debug().
+			Str("type", tx.Type).
+			Bool("success", tx.Success).
+			Msg("⏭️  Skipping non-user or failed transaction")
 		return nil
 	}
 
+	log.Debug().
+		Str("hash", tx.Hash).
+		Int("event_count", len(tx.Events)).
+		Msg("🔍 Processing user transaction")
+
 	// Process each event in the transaction
 	for _, event := range tx.Events {
+		log.Debug().
+			Str("event_type", event.Type).
+			Str("module_address", l.moduleAddress).
+			Bool("contains_module", strings.Contains(event.Type, l.moduleAddress)).
+			Msg("📝 Checking event")
+
 		// Check if event is from our module
 		if !strings.Contains(event.Type, l.moduleAddress) {
 			continue
 		}
 
+		log.Info().
+			Str("event_type", event.Type).
+			Msg("✅ Found event from our module")
+
 		// Extract event name
 		parts := strings.Split(event.Type, "::")
 		if len(parts) < 3 {
+			log.Warn().
+				Str("event_type", event.Type).
+				Int("parts", len(parts)).
+				Msg("⚠️  Event type has unexpected format")
 			continue
 		}
 		eventName := parts[len(parts)-1]
 
+		log.Info().
+			Str("event_name", eventName).
+			Msg("🎯 Extracted event name")
+
 		// Find handler
 		handler, exists := l.eventHandlers[eventName]
 		if !exists {
-			log.Debug().Str("event", eventName).Msg("No handler registered")
+			log.Debug().
+				Str("event", eventName).
+				Interface("available_handlers", l.getHandlerNames()).
+				Msg("⚠️  No handler registered for event")
 			continue
 		}
+
+		log.Info().
+			Str("event", eventName).
+			Msg("▶️  Executing handler")
 
 		// Execute handler
 		if err := handler(ctx, event, tx); err != nil {
@@ -180,11 +250,20 @@ func (l *EventListener) processTx(ctx context.Context, tx TransactionEvent) erro
 				Err(err).
 				Str("event", eventName).
 				Str("tx", tx.Hash).
-				Msg("Handler error")
+				Msg("❌ Handler error")
 		}
 	}
 
 	return nil
+}
+
+// Helper to get registered handler names for debugging
+func (l *EventListener) getHandlerNames() []string {
+	names := make([]string, 0, len(l.eventHandlers))
+	for name := range l.eventHandlers {
+		names = append(names, name)
+	}
+	return names
 }
 
 func (l *EventListener) registerDefaultHandlers() {
