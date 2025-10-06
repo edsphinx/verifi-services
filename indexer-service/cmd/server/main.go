@@ -131,6 +131,37 @@ func main() {
 		})
 	})
 
+	// Debug verbose toggle endpoint
+	app.Post("/debug/verbose", func(c *fiber.Ctx) error {
+		type VerboseRequest struct {
+			Passkey string `json:"passkey"`
+			Enable  bool   `json:"enable"`
+		}
+
+		var req VerboseRequest
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+		}
+
+		// Check passkey from environment
+		debugPasskey := os.Getenv("DEBUG_PASSKEY")
+		if debugPasskey == "" {
+			debugPasskey = "default-debug-key" // fallback
+		}
+
+		if req.Passkey != debugPasskey {
+			return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
+		}
+
+		// Toggle verbose mode
+		listener.SetVerboseMode(req.Enable)
+
+		return c.JSON(fiber.Map{
+			"status":  "success",
+			"verbose": req.Enable,
+		})
+	})
+
 	// Start server in goroutine
 	go func() {
 		log.Info().Msgf("🌐 Server listening on :%s", cfg.Port)

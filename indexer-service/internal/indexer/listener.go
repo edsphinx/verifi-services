@@ -20,10 +20,16 @@ type EventListener struct {
 	pollInterval    time.Duration
 	eventHandlers   map[string]EventHandler
 	webhookClient   *webhook.WebhookClient
+	verboseMode     bool
 }
 
 func (l *EventListener) GetLastVersion() uint64 {
 	return l.lastVersion
+}
+
+func (l *EventListener) SetVerboseMode(enable bool) {
+	l.verboseMode = enable
+	log.Info().Bool("verbose", enable).Msg("🔧 Verbose mode toggled")
 }
 
 type EventHandler func(ctx context.Context, event Event, tx TransactionEvent) error
@@ -202,14 +208,16 @@ func (l *EventListener) processTx(ctx context.Context, tx TransactionEvent) erro
 	for i, event := range tx.Events {
 		matchesModule := strings.Contains(event.Type, l.moduleAddress)
 
-		// Log ALL events from user transactions to debug
-		log.Info().
-			Str("tx_hash", tx.Hash).
-			Int("event_index", i).
-			Str("event_type", event.Type).
-			Str("module_address", l.moduleAddress).
-			Bool("contains_module", matchesModule).
-			Msg("📝 Checking event")
+		// Log ALL events only in verbose mode
+		if l.verboseMode {
+			log.Info().
+				Str("tx_hash", tx.Hash).
+				Int("event_index", i).
+				Str("event_type", event.Type).
+				Str("module_address", l.moduleAddress).
+				Bool("contains_module", matchesModule).
+				Msg("📝 Checking event (verbose)")
+		}
 
 		// Check if event is from our module
 		if !matchesModule {
