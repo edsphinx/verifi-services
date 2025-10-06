@@ -353,13 +353,16 @@ func (l *EventListener) handleMarketCreated(ctx context.Context, event Event, tx
 		Str("tx", tx.Hash).
 		Msg("🎯 MarketCreatedEvent detected")
 
-	// Extract event data
-	marketAddress, _ := event.Data["market_obj_addr"].(string)
+	// Extract event data - use correct field names from Move struct
+	marketAddress, _ := event.Data["market_address"].(string)
 	creator, _ := event.Data["creator"].(string)
+	description, _ := event.Data["description"].(string)
+	resolutionTimestamp, _ := event.Data["resolution_timestamp"].(string)
 
 	log.Info().
 		Str("market", marketAddress[:10]+"...").
 		Str("creator", creator[:10]+"...").
+		Str("description", description).
 		Msg("✅ New market created")
 
 	// Trigger webhook for live notifications
@@ -367,13 +370,8 @@ func (l *EventListener) handleMarketCreated(ctx context.Context, event Event, tx
 		eventData := make(map[string]interface{})
 		eventData["market_address"] = marketAddress
 		eventData["creator"] = creator
-		// Add other market data from event if available
-		if description, ok := event.Data["description"].(string); ok {
-			eventData["description"] = description
-		}
-		if resolutionTime, ok := event.Data["resolution_timestamp"].(string); ok {
-			eventData["resolution_timestamp"] = resolutionTime
-		}
+		eventData["description"] = description
+		eventData["resolution_timestamp"] = resolutionTimestamp
 
 		err := l.webhookClient.SendEvent(event.Type, eventData, tx.Hash, tx.Sender)
 		if err != nil {
