@@ -199,15 +199,20 @@ func (l *EventListener) processTx(ctx context.Context, tx TransactionEvent) erro
 		Msg("🔍 Processing user transaction")
 
 	// Process each event in the transaction
-	for _, event := range tx.Events {
-		log.Debug().
+	for i, event := range tx.Events {
+		matchesModule := strings.Contains(event.Type, l.moduleAddress)
+
+		// Log ALL events from user transactions to debug
+		log.Info().
+			Str("tx_hash", tx.Hash).
+			Int("event_index", i).
 			Str("event_type", event.Type).
 			Str("module_address", l.moduleAddress).
-			Bool("contains_module", strings.Contains(event.Type, l.moduleAddress)).
+			Bool("contains_module", matchesModule).
 			Msg("📝 Checking event")
 
 		// Check if event is from our module
-		if !strings.Contains(event.Type, l.moduleAddress) {
+		if !matchesModule {
 			continue
 		}
 
