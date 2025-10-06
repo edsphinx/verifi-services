@@ -30,9 +30,15 @@ type EventHandler func(ctx context.Context, event Event, tx TransactionEvent) er
 
 func NewEventListener(client *Client, database *db.DB, moduleAddress string, webhookURL string) *EventListener {
 	var webhookClient *webhook.WebhookClient
+
+	log.Info().
+		Str("webhook_url", webhookURL).
+		Bool("is_empty", webhookURL == "").
+		Msg("🔧 Initializing EventListener with webhook config")
+
 	if webhookURL != "" {
 		webhookClient = webhook.NewWebhookClient(webhookURL)
-		log.Info().Str("webhook_url", webhookURL).Msg("📡 Webhook client initialized")
+		log.Info().Str("webhook_url", webhookURL).Msg("📡 Webhook client initialized successfully")
 	} else {
 		log.Warn().Msg("⚠️  No webhook URL provided, notifications will not be sent")
 	}
@@ -351,32 +357,54 @@ func (l *EventListener) handleSharesBurned(ctx context.Context, event Event, tx 
 func (l *EventListener) handleMarketCreated(ctx context.Context, event Event, tx TransactionEvent) error {
 	log.Info().
 		Str("tx", tx.Hash).
+		Str("event_type", event.Type).
 		Msg("🎯 MarketCreatedEvent detected")
 
+	// Log raw event data for debugging
+	log.Debug().
+		Interface("event_data", event.Data).
+		Msg("📦 Raw event data")
+
 	// Extract event data - use correct field names from Move struct
-	marketAddress, _ := event.Data["market_address"].(string)
-	creator, _ := event.Data["creator"].(string)
-	description, _ := event.Data["description"].(string)
-	resolutionTimestamp, _ := event.Data["resolution_timestamp"].(string)
+	marketAddress, okAddr := event.Data["market_address"].(string)
+	creator, okCreator := event.Data["creator"].(string)
+	description, okDesc := event.Data["description"].(string)
+	resolutionTimestamp, okRes := event.Data["resolution_timestamp"].(string)
 
 	log.Info().
-		Str("market", marketAddress[:10]+"...").
-		Str("creator", creator[:10]+"...").
+		Str("market", marketAddress).
+		Str("creator", creator).
 		Str("description", description).
-		Msg("✅ New market created")
+		Str("resolution_timestamp", resolutionTimestamp).
+		Bool("addr_ok", okAddr).
+		Bool("creator_ok", okCreator).
+		Bool("desc_ok", okDesc).
+		Bool("res_ok", okRes).
+		Msg("✅ Extracted market data")
 
 	// Trigger webhook for live notifications
 	if l.webhookClient != nil {
+		log.Info().Msg("🔔 Webhook client exists, preparing to send...")
+
 		eventData := make(map[string]interface{})
 		eventData["market_address"] = marketAddress
 		eventData["creator"] = creator
 		eventData["description"] = description
 		eventData["resolution_timestamp"] = resolutionTimestamp
 
+		log.Info().
+			Interface("event_data", eventData).
+			Str("webhook_url", l.webhookClient.URL).
+			Msg("📤 Sending webhook with data")
+
 		err := l.webhookClient.SendEvent(event.Type, eventData, tx.Hash, tx.Sender)
 		if err != nil {
-			log.Warn().Err(err).Msg("Webhook trigger failed (non-critical)")
+			log.Error().Err(err).Msg("❌ Webhook trigger failed")
+		} else {
+			log.Info().Msg("✅ Webhook sent successfully")
 		}
+	} else {
+		log.Warn().Msg("⚠️  Webhook client is nil, skipping webhook notification")
 	}
 
 	return nil
